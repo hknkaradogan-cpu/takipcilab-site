@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Takipcilab</title>
 <meta name="description" content="Instagram, YouTube, TikTok ve daha fazlası için takipçi, beğeni ve izlenme paketleri. Havale ile güvenli ödeme, sipariş takibi.">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1838e8">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -128,7 +133,7 @@ details{border-bottom:1px solid var(--line);padding:12px 0}summary{font-weight:7
   <nav><a href="#" data-r="home">Anasayfa</a><a href="#hizmetler" data-r="hizmetler">Hizmetler</a><a href="#ucretsiz" data-r="ucretsiz">Ücretsiz deneme</a><a href="#sorgula" data-r="sorgula">Sipariş sorgula</a><a href="#iletisim" data-r="iletisim">İletişim</a></nav>
 </header>
 <main id="app"><div class="loading">Yükleniyor…</div></main>
-<p class="legal">Takipcilab, Instagram, YouTube, TikTok ve diğer platformlarla bağlantılı değildir; marka adları sahiplerine aittir.</p>
+<p class="legal"><button id="install" class="mini" hidden style="margin-bottom:10px">Uygulamayı yükle</button><br>Takipcilab, Instagram, YouTube, TikTok ve diğer platformlarla bağlantılı değildir; marka adları sahiplerine aittir.</p>
 
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="shT"><div class="panel" id="shBody"></div></div>
 <div class="toast" id="toast"></div>
@@ -419,6 +424,10 @@ document.addEventListener('submit',async e=>{e.preventDefault();const id=e.targe
 document.addEventListener('input',e=>{if(e.target.id==='psearch')renderPList(e.target.value);if(e.target.dataset&&e.target.dataset.pm)renderPInfo()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')sheet.classList.remove('open')});
 window.addEventListener('hashchange',route);
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+let deferred=null;const ib=document.getElementById('install');
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;ib.hidden=false});
+ib.addEventListener('click',async()=>{if(!deferred)return;deferred.prompt();await deferred.userChoice;deferred=null;ib.hidden=true});
 (async()=>{try{await loadData();await refreshAuth();route()}catch(err){app.innerHTML='<div class="loading">Bağlantı kurulamadı. Sayfayı yenile.</div>'}})();
 }
 </script>
