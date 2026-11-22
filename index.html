@@ -113,6 +113,9 @@ details{border-bottom:1px solid var(--line);padding:12px 0}summary{font-weight:7
 .svc{display:grid;grid-template-columns:minmax(0,1fr) 110px 70px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
 .svc input{padding:8px 10px;font-size:15px}
 .svc input[type=checkbox]{width:22px;height:22px}
+.seg3{grid-template-columns:repeat(3,1fr)}
+.sel{width:100%;padding:13px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);font-size:16px}
+.svc{grid-template-columns:minmax(0,1fr) 110px 70px}
 .loading{text-align:center;color:var(--mut);padding:40px}
 .legal{max-width:1240px;margin:0 auto;padding:0 16px;text-align:center;font-size:13px;color:var(--mut)}
 .proto{text-align:center;font-size:13px;color:var(--mut);padding:24px 16px 8px}
@@ -157,6 +160,13 @@ const lc=s=>s.toLocaleLowerCase('tr');
 const app=document.getElementById('app'),toastEl=document.getElementById('toast'),sheet=document.getElementById('sheet'),shBody=document.getElementById('shBody');
 const toast=m=>{toastEl.textContent=m;toastEl.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>toastEl.style.display='none',2600)};
 const errMsg=e=>(e&&e.message||'Bir hata oluştu').replace(/^.*?:\s*/,'');
+async function fn(action,body={}){
+  const {data,error}=await SB.functions.invoke('provider',{body:{action,...body}});
+  if(error){let m=error.message;try{const j=await error.context.json();m=j.error||m}catch(e){}throw new Error(m)}
+  if(data&&data.error)throw new Error(data.error);
+  return data;
+}
+let PSVC=null,PCUR='';
 let SVC=[],P=[],SET={},cur=null,freeSel=-1,fill='',session=null,isAdmin=false,aFilter=0;
 
 function buildPlatforms(){
@@ -271,7 +281,7 @@ function contact(){
 async function admin(){
   if(!session)return hero('Yönetim girişi','')+`<div class="wrap"><div class="panel"><form id="lf"><label for="l-email">E-posta</label><input id="l-email" type="email" autocomplete="username"><label for="l-pass">Şifre</label><input id="l-pass" type="password" autocomplete="current-password"><div class="err" id="l-e"></div><button class="btn">Giriş yap</button><button type="button" class="btn alt" id="signup">Hesap oluştur</button></form><p class="note">Hesap oluşturduktan sonra yönetici yetkisi verilmesi gerekir.</p></div></div>`;
   if(!isAdmin)return hero('Yetki bekleniyor','')+`<div class="wrap"><div class="panel"><div class="empty">${esc(session.user.email)} hesabının yönetici yetkisi yok.</div><button class="btn alt" id="logout">Çıkış yap</button></div></div>`;
-  return hero('Yönetim paneli','<span id="astats">Yükleniyor…</span>')+`<div class="wrap"><div class="panel"><div class="seg" role="tablist">${['Siparişler','Fiyatlar','Ayarlar','Çıkış'].map((t,i)=>`<button role="tab" data-aseg="${i}" class="${i?'':'on'}">${t}</button>`).join('')}</div><div id="apane"></div></div></div>`;
+  return hero('Yönetim paneli','<span id="astats">Yükleniyor…</span>')+`<div class="wrap"><div class="panel"><div class="seg seg3" role="tablist">${['Siparişler','Gönder','Sağlayıcı','Fiyatlar','Ayarlar','Çıkış'].map((t,i)=>`<button role="tab" data-aseg="${i}" class="${i?'':'on'}">${t}</button>`).join('')}</div><div id="apane"></div></div></div>`;
 }
 async function adminOrders(){
   const pane=document.getElementById('apane');pane.innerHTML='<div class="loading">Yükleniyor…</div>';
@@ -283,11 +293,48 @@ async function adminOrders(){
   const ciroT=data.filter(o=>o.status>0&&o.status<4&&new Date(o.created_at).toDateString()===today).reduce((a,o)=>a+Number(o.price),0);
   document.getElementById('astats').textContent=`Bugün ${fmt(ciroT)} · toplam onaylı ${fmt(ciro)} · ${cnt[0]} ödeme bekliyor`;
   const list=data.filter(o=>aFilter===-1||o.status===aFilter);
-  pane.innerHTML=`<div class="filters">${[[0,'Ödeme bekleyen'],[1,'Onaylı'],[2,'İşlemde'],[3,'Tamamlanan'],[4,'İptal'],[-1,'Tümü']].map(f=>`<button data-af="${f[0]}" class="${aFilter===f[0]?'on':''}">${f[1]}${f[0]>=0?` (${cnt[f[0]]})`:''}</button>`).join('')}</div>`+
+  pane.innerHTML=`<button class="btn alt" id="syncBtn" style="margin:0 0 12px">Sağlayıcıdan durumları güncelle</button><div class="filters">${[[0,'Ödeme bekleyen'],[1,'Onaylı'],[2,'İşlemde'],[3,'Tamamlanan'],[4,'İptal'],[-1,'Tümü']].map(f=>`<button data-af="${f[0]}" class="${aFilter===f[0]?'on':''}">${f[1]}${f[0]>=0?` (${cnt[f[0]]})`:''}</button>`).join('')}</div>`+
   (list.length?list.map(o=>{const safe=/^https?:\/\//i.test(o.link)?o.link:'https://'+o.link;return `<div class="ord"><div class="h"><b>${esc(o.id)}${o.is_free?' · ücretsiz':''}</b><span class="badge s${o.status}">${ST[o.status]}</span></div>
   <div style="margin-top:6px;font-weight:700">${esc(o.services?.platform_name)} ${esc(o.services?.cat_name)} · ${o.qty.toLocaleString('tr-TR')}${o.bonus?` + ${o.bonus.toLocaleString('tr-TR')}`:''} · ${fmt(o.price)}</div>
-  <div class="d"><a href="${esc(safe)}" target="_blank" rel="noopener noreferrer">${esc(o.link)}</a><br>${esc(o.name)} · ${esc(o.phone)} · ${esc(o.email)}<br>${new Date(o.created_at).toLocaleString('tr-TR')}</div>
-  <div class="a">${o.status<3?`<button class="mini" data-st="${o.id}" data-to="${o.status+1}">${NEXT[o.status]}</button>`:''}${o.status<3?`<button class="mini red" data-st="${o.id}" data-to="4">İptal / iade</button>`:''}${o.status===4?`<button class="mini alt" data-st="${o.id}" data-to="0">Geri al</button>`:''}<button class="mini alt" data-cp="${esc(o.link)}">Bağlantıyı kopyala</button></div></div>`}).join(''):'<div class="empty">Bu durumda sipariş yok.</div>');
+  <div class="d"><a href="${esc(safe)}" target="_blank" rel="noopener noreferrer">${esc(o.link)}</a><br>${esc(o.name)} · ${esc(o.phone)} · ${esc(o.email)}<br>${new Date(o.created_at).toLocaleString('tr-TR')}${o.provider_order_id?`<br><b>Sağlayıcı #${esc(o.provider_order_id)}</b> · ${esc(o.provider_status||'')}${o.provider_remains!=null&&o.status===2?` · kalan ${o.provider_remains}`:''}`:''}</div>
+  <div class="a">${o.status===1&&!o.provider_order_id?`<button class="mini" data-send="${o.id}" style="background:var(--ok)">Sağlayıcıya gönder</button>`:''}${o.status<3?`<button class="mini${o.status===1?' alt':''}" data-st="${o.id}" data-to="${o.status+1}">${NEXT[o.status]}</button>`:''}${o.status<3?`<button class="mini red" data-st="${o.id}" data-to="4">İptal / iade</button>`:''}${o.status===4?`<button class="mini alt" data-st="${o.id}" data-to="0">Geri al</button>`:''}<button class="mini alt" data-cp="${esc(o.link)}">Bağlantıyı kopyala</button></div></div>`}).join(''):'<div class="empty">Bu durumda sipariş yok.</div>');
+}
+async function adminSend(){
+  const pane=document.getElementById('apane');
+  const {data}=await SB.from('services').select('*').order('sort');
+  const mapped=(data||[]).filter(s=>s.provider_service_id);
+  if(!mapped.length){pane.innerHTML='<div class="empty">Önce Sağlayıcı sekmesinden API bilgilerini gir ve hizmetlere sağlayıcı servis ID\'si ata.</div>';return}
+  pane.innerHTML=`<p class="note" style="margin-top:0">Müşteri siparişi olmadan, doğrudan sağlayıcıya gönderim yapar. Bakiyenden düşer.</p><form id="mf">
+  <label for="m-s">Hizmet</label><select id="m-s" class="sel">${mapped.map(s=>`<option value="${s.id}">${esc(s.platform_name)} ${esc(s.cat_name)}</option>`).join('')}</select>
+  <label for="m-l">Bağlantı</label><input id="m-l" placeholder="https://...">
+  <label for="m-q">Miktar</label><input id="m-q" type="number" min="1" inputmode="numeric">
+  <div class="err" id="m-e"></div><button class="btn" id="mbtn">Gönder</button></form>`;
+}
+async function adminProvider(){
+  const pane=document.getElementById('apane');pane.innerHTML='<div class="loading">Yükleniyor…</div>';
+  let cfg={api_url:'',has_key:false};try{cfg=await fn('config_get')}catch(e){pane.innerHTML=`<div class="empty">${esc(e.message)}</div>`;return}
+  const {data:svcs}=await SB.from('services').select('*').order('sort');
+  pane.innerHTML=`<form id="pf"><label for="p-url">API adresi</label><input id="p-url" value="${esc(cfg.api_url)}" placeholder="https://saglayici.com/api/v2">
+  <label for="p-key">API anahtarı</label><input id="p-key" type="password" autocomplete="off" placeholder="${cfg.has_key?'Kayıtlı (değiştirmek için yeni anahtar yaz)':'Sağlayıcı panelindeki API key'}">
+  <button class="btn">Kaydet</button></form>
+  <div class="sum" style="margin-top:16px"><span>Sağlayıcı bakiyesi</span><strong id="pbal">${cfg.has_key?'…':'—'}</strong></div>
+  <h3 style="font-size:18px;margin:18px 0 6px">Hizmet eşleştirme</h3>
+  <p class="note" style="margin-top:0">Her hizmete sağlayıcının servis numarasını yaz. “Servisleri getir” ile sağlayıcının listesini görüp arayabilirsin.</p>
+  <button class="btn alt" id="pload" type="button">Sağlayıcı servislerini getir</button>
+  <div id="plist"></div>
+  <div id="pmap">${(svcs||[]).map(s=>`<div class="svc"><span>${esc(s.platform_name)} ${esc(s.cat_name)}<br><small style="color:var(--mut)" data-pinfo="${s.id}"></small></span><input type="number" min="1" value="${s.provider_service_id??''}" data-pm="${s.id}" placeholder="Servis ID" aria-label="Sağlayıcı servis ID"><span></span></div>`).join('')}</div>
+  <button class="btn" id="psave">Eşleştirmeyi kaydet</button>`;
+  if(cfg.has_key){fn('balance').then(b=>{document.getElementById('pbal').textContent=`${b.balance} ${b.currency||''}`}).catch(e=>{document.getElementById('pbal').textContent='Hata';toast(e.message)})}
+  if(PSVC)renderPInfo();
+}
+function renderPInfo(){
+  document.querySelectorAll('[data-pm]').forEach(i=>{const p=PSVC&&PSVC.find(x=>String(x.id)===i.value);const el=document.querySelector(`[data-pinfo="${i.dataset.pm}"]`);if(el)el.textContent=p?`${p.name} · 1000 adet ${p.rate} · min ${p.min}`:''});
+}
+function renderPList(q=''){
+  const box=document.getElementById('plist');if(!box||!PSVC)return;
+  const t=q.toLocaleLowerCase('tr');const rows=PSVC.filter(s=>!t||(`${s.id} ${s.name} ${s.cat}`).toLocaleLowerCase('tr').includes(t)).slice(0,60);
+  box.innerHTML=`<input id="psearch" placeholder="Ara: youtube subscribers, instagram followers…" value="${esc(q)}" style="margin-top:12px"><div style="max-height:320px;overflow:auto;margin:8px 0 16px;border:1px solid var(--line);border-radius:12px">${rows.map(s=>`<div class="row" style="padding:8px 10px"><span><b style="color:var(--ink)">${esc(s.id)}</b> ${esc(s.name)}</span><span style="white-space:nowrap">${esc(s.rate)}/1000</span></div>`).join('')||'<div class="empty">Sonuç yok</div>'}</div>`;
+  const inp=document.getElementById('psearch');inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length);
 }
 async function adminPrices(){
   const pane=document.getElementById('apane');
@@ -327,8 +374,13 @@ document.addEventListener('click',async e=>{
   const sg=e.target.closest('[data-seg]');
   if(sg){const box=sg.closest('.panel');box.querySelectorAll('[data-seg]').forEach(b=>b.classList.toggle('on',b===sg));box.querySelectorAll('[data-pane]').forEach(d=>d.hidden=d.dataset.pane!==sg.dataset.seg);return}
   const as=e.target.closest('[data-aseg]');
-  if(as){const i=+as.dataset.aseg;if(i===3){await SB.auth.signOut();await refreshAuth();route();return}
-    document.querySelectorAll('[data-aseg]').forEach(b=>b.classList.toggle('on',b===as));[adminOrders,adminPrices,adminSettings][i]();return}
+  if(as){const i=+as.dataset.aseg;if(i===5){await SB.auth.signOut();await refreshAuth();route();return}
+    document.querySelectorAll('[data-aseg]').forEach(b=>b.classList.toggle('on',b===as));[adminOrders,adminSend,adminProvider,adminPrices,adminSettings][i]();return}
+  const sd=e.target.closest('[data-send]');
+  if(sd){sd.disabled=true;sd.textContent='Gönderiliyor…';try{const r=await fn('send',{order_id:sd.dataset.send});toast(`Gönderildi · sağlayıcı #${r.provider_order_id}`)}catch(err){toast(err.message)}adminOrders();return}
+  if(e.target.id==='syncBtn'){e.target.disabled=true;try{const r=await fn('sync');toast(`${r.updated} sipariş güncellendi`)}catch(err){toast(err.message)}adminOrders();return}
+  if(e.target.id==='pload'){e.target.disabled=true;e.target.textContent='Yükleniyor…';try{PSVC=await fn('services');renderPList();renderPInfo();e.target.textContent=`${PSVC.length} servis yüklendi`}catch(err){toast(err.message);e.target.disabled=false;e.target.textContent='Sağlayıcı servislerini getir'}return}
+  if(e.target.id==='psave'){e.target.disabled=true;let bad=0;for(const i of document.querySelectorAll('[data-pm]')){const v=i.value.trim();const {error}=await SB.from('services').update({provider_service_id:v?+v:null}).eq('id',+i.dataset.pm);if(error)bad++}e.target.disabled=false;toast(bad?`${bad} kayıt başarısız`:'Eşleştirme kaydedildi');renderPInfo();return}
   const af=e.target.closest('[data-af]');if(af){aFilter=+af.dataset.af;adminOrders();return}
   const st=e.target.closest('[data-st]');
   if(st){st.disabled=true;const {error}=await SB.from('orders').update({status:+st.dataset.to,updated_at:new Date().toISOString()}).eq('id',st.dataset.st);
@@ -354,10 +406,17 @@ document.addEventListener('submit',async e=>{e.preventDefault();const id=e.targe
   if(id==='qf')showQuery(document.getElementById('qid').value);
   if(id==='lf'){const le=document.getElementById('l-e');const {error}=await SB.auth.signInWithPassword({email:document.getElementById('l-email').value.trim(),password:document.getElementById('l-pass').value});
     if(error){le.textContent=/confirm/i.test(error.message)?'E-postanı henüz doğrulamadın.':'E-posta ya da şifre hatalı.';return}await refreshAuth();route()}
+  if(id==='pf'){try{await fn('config_set',{api_url:document.getElementById('p-url').value,api_key:document.getElementById('p-key').value});toast('Sağlayıcı kaydedildi');adminProvider()}catch(err){toast(err.message)}}
+  if(id==='mf'){const er=document.getElementById('m-e'),b=document.getElementById('mbtn');const q=+document.getElementById('m-q').value,l=document.getElementById('m-l').value.trim();
+    if(l.length<5||!(q>0)){er.textContent='Bağlantı ve miktar gerekli.';return}
+    b.disabled=true;b.textContent='Gönderiliyor…';
+    try{const r=await fn('manual',{service_id:+document.getElementById('m-s').value,link:l,quantity:q});er.textContent='';toast(`Gönderildi · ${r.id}`);document.getElementById('m-l').value='';document.getElementById('m-q').value=''}catch(err){er.textContent=err.message}
+    b.disabled=false;b.textContent='Gönder'}
   if(id==='sf'){const v=k=>document.getElementById('s-'+k).value.trim();
     const {error}=await SB.from('settings').update({site_name:v('site_name'),bank_holder:v('bank_holder'),bank_name:v('bank_name'),iban:v('iban'),whatsapp:v('whatsapp'),email:v('email'),hours:v('hours'),free_enabled:document.getElementById('s-free').checked}).eq('id',1);
     toast(error?errMsg(error):'Ayarlar kaydedildi');await loadData()}
 });
+document.addEventListener('input',e=>{if(e.target.id==='psearch')renderPList(e.target.value);if(e.target.dataset&&e.target.dataset.pm)renderPInfo()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')sheet.classList.remove('open')});
 window.addEventListener('hashchange',route);
 (async()=>{try{await loadData();await refreshAuth();route()}catch(err){app.innerHTML='<div class="loading">Bağlantı kurulamadı. Sayfayı yenile.</div>'}})();
